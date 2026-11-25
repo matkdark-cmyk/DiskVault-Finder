@@ -74,7 +74,7 @@ try {
     }
 
     Write-Step "Compilando ejecutable portable de Windows x64 (sin instalador)..."
-    npx --yes @tauri-apps/cli build --no-bundle
+    npx --yes @tauri-apps/cli@2 build --no-bundle
     if ($LASTEXITCODE -ne 0) { throw "Falló tauri build." }
 
     # Preparar carpeta release/
