@@ -187,7 +187,7 @@ pub fn compare_semver(current: &str, latest: &str) -> Ordering {
     }
 }
 
-/// Selecciona el paquete portable (.zip) recomendado del lanzamiento de GitHub.
+/// Selecciona el instalador nativo de Windows (.exe) recomendado del lanzamiento de GitHub.
 pub fn select_recommended_asset(
     assets: &[ReleaseAssetDto],
     _is_portable: bool,
@@ -200,17 +200,22 @@ pub fn select_recommended_asset(
         .iter()
         .find(|a| {
             let lower = a.name.to_ascii_lowercase();
-            lower.ends_with(".zip") && lower.contains("portable")
-        })
-        .or_else(|| {
-            assets
-                .iter()
-                .find(|a| a.name.to_ascii_lowercase().ends_with(".zip"))
+            lower.ends_with(".exe") && (lower.contains("setup") || lower.contains("nsis"))
         })
         .or_else(|| {
             assets
                 .iter()
                 .find(|a| a.name.to_ascii_lowercase().ends_with(".exe"))
+        })
+        .or_else(|| {
+            assets
+                .iter()
+                .find(|a| a.name.to_ascii_lowercase().ends_with(".msi"))
+        })
+        .or_else(|| {
+            assets
+                .iter()
+                .find(|a| a.name.to_ascii_lowercase().ends_with(".zip"))
         })
         .cloned()
 }
@@ -428,13 +433,13 @@ mod tests {
     }
 
     #[test]
-    fn selects_portable_zip_asset_from_release() {
+    fn selects_native_windows_installer_from_release() {
         let assets = vec![
             ReleaseAssetDto {
-                name: "DiskVault-Finder-1.1.0-x64-portable.zip".to_string(),
-                download_url: "https://github.com/a/b/releases/download/v1.1.0/portable.zip"
+                name: "DiskVault-Finder-1.1.0-x64-setup.exe".to_string(),
+                download_url: "https://github.com/a/b/releases/download/v1.1.0/setup.exe"
                     .to_string(),
-                size_bytes: 10_000_000,
+                size_bytes: 12_000_000,
             },
             ReleaseAssetDto {
                 name: "SHA256SUMS.txt".to_string(),
@@ -444,8 +449,9 @@ mod tests {
             },
         ];
 
-        let portable = select_recommended_asset(&assets, true).expect("debe elegir zip portable");
-        assert!(portable.name.ends_with("-portable.zip"));
+        let installer =
+            select_recommended_asset(&assets, false).expect("debe elegir instalador .exe");
+        assert!(installer.name.ends_with("-setup.exe"));
     }
 
     #[test]

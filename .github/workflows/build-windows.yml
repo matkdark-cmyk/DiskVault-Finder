@@ -1,10 +1,10 @@
-name: Build Portable Windows x64
+name: Build Windows x64 (Instalador Nativo)
 
 on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Publicar como Release oficial en GitHub (para el buscador de actualizaciones)'
+        description: 'Publicar como Release oficial en GitHub (para actualizar desde la app)'
         type: boolean
         default: true
       release_tag:
@@ -20,8 +20,8 @@ permissions:
   contents: write
 
 jobs:
-  build-windows-portable:
-    name: Compilar DiskVault Finder Portable (Windows x64)
+  build-windows-installer:
+    name: Compilar DiskVault Finder Nativo (Windows x64)
     runs-on: windows-latest
 
     steps:
@@ -52,7 +52,7 @@ jobs:
             npm install
           }
 
-      - name: Compilar y empaquetar versión Portable (.zip, sin instalador)
+      - name: Compilar instalador nativo Windows x64 (.exe)
         shell: pwsh
         run: |
           powershell -ExecutionPolicy Bypass -File .\scripts\build-releases.ps1
@@ -83,22 +83,22 @@ jobs:
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "Etiqueta seleccionada: $tag"
 
-      - name: Subir artefacto portable descargable
+      - name: Subir instalador nativo como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: DiskVault-Finder-Portable-x64
+          name: DiskVault-Finder-Windows-x64
           path: |
-            release/*.zip
+            release/*-setup.exe
             release/SHA256SUMS.txt
           if-no-files-found: error
 
-      - name: Publicar Release Portable en GitHub
+      - name: Publicar Release en GitHub (actualizable desde la app)
         if: github.event_name == 'push' || inputs.publish_release == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: DiskVault Finder ${{ steps.version.outputs.tag }} (Portable x64)
+          name: DiskVault Finder ${{ steps.version.outputs.tag }} (Windows x64)
           generate_release_notes: true
           files: |
-            release/*.zip
+            release/*-setup.exe
             release/SHA256SUMS.txt

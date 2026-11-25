@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-    Genera el paquete oficial Portable (.zip) para Windows x64 de DiskVault Finder:
-      1. Compila el ejecutable Windows x64 sin crear instalador (--no-bundle)
-      2. Empaqueta DiskVault-Finder-<version>-x64-portable.zip con portable.flag y LEEME-PORTABLE.txt
+    Genera el instalador nativo oficial de Windows x64 para DiskVault Finder:
+      1. Verifica TypeScript y ejecuta pruebas unitarias de Rust
+      2. Compila el instalador nativo NSIS (.exe) que instala la app en Windows y permite actualizar conservando tus datos
       3. Genera SHA256SUMS.txt
 
 .EXAMPLE
@@ -48,7 +48,7 @@ try {
         $Version = "1.0.0"
     }
 
-    Write-Host "Producto : $($TauriConf.productName) (Edición Portable)"
+    Write-Host "Producto : $($TauriConf.productName) (Instalación Nativa Windows x64)"
     Write-Host "Versión  : $Version"
     Write-Host "Destino  : $ReleaseDir"
 
@@ -73,8 +73,8 @@ try {
         }
     }
 
-    Write-Step "Compilando ejecutable portable de Windows x64 (sin instalador)..."
-    npx --yes @tauri-apps/cli@2 build --no-bundle
+    Write-Step "Compilando instalador nativo de Windows x64 (NSIS .exe)..."
+    npx --yes @tauri-apps/cli@2 build --bundles nsis
     if ($LASTEXITCODE -ne 0) { throw "Falló tauri build." }
 
     # Preparar carpeta release/
@@ -84,54 +84,26 @@ try {
     New-Item -ItemType Directory -Path $ReleaseDir -Force | Out-Null
 
     $TargetReleaseDir = Join-Path $TauriDir "target\release"
-    $MainExePath = Join-Path $TargetReleaseDir "diskvault-finder.exe"
-    if (-not (Test-Path $MainExePath)) {
-        throw "No se encontró el ejecutable compilado en '$MainExePath'."
+    $NsisDir = Join-Path $TargetReleaseDir "bundle\nsis"
+    $NsisExe = Get-ChildItem -Path $NsisDir -Filter "*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $NsisExe) {
+        throw "No se encontró el instalador NSIS (.exe) en '$NsisDir'."
     }
 
-    # Ensamblar paquete Portable (.zip) con portable.flag
-    Write-Step "Ensamblando versión Portable (.zip)..."
-    $PortableFolderName = "DiskVault-Finder-$Version-x64-portable"
-    $PortableStagingDir = Join-Path $ReleaseDir $PortableFolderName
-    New-Item -ItemType Directory -Path $PortableStagingDir -Force | Out-Null
-
-    Copy-Item -Path $MainExePath -Destination (Join-Path $PortableStagingDir "DiskVault Finder.exe") -Force
-    Set-Content -Path (Join-Path $PortableStagingDir "portable.flag") -Value "DiskVault Finder Portable Mode - No eliminar este archivo" -Encoding UTF8
-
-    $ReadmePortable = @"
-DiskVault Finder $Version - Edición Portable (Windows x64)
-============================================================
-
-Cómo usar esta edición portable:
-1. Descomprime esta carpeta en cualquier ubicación (USB, disco secundario o Escritorio).
-2. Ejecuta "DiskVault Finder.exe".
-3. El archivo "portable.flag" junto al ejecutable activa automáticamente el Modo Portable:
-   - Toda la base de datos SQLite FTS5 y los ajustes se guardan en .\data\finder.db
-   - No escribe nada en %APPDATA% ni en el Registro de Windows.
-   - Puedes mover esta carpeta a otro PC llevando contigo tu caché indexado.
-
-Requisito del sistema:
-- Windows 10 (1903+) o Windows 11 (64 bits) con Microsoft Edge WebView2 Runtime.
-"@
-    Set-Content -Path (Join-Path $PortableStagingDir "LEEME-PORTABLE.txt") -Value $ReadmePortable -Encoding UTF8
-
-    $FinalPortableZipName = "$PortableFolderName.zip"
-    $FinalPortableZipPath = Join-Path $ReleaseDir $FinalPortableZipName
-    Compress-Archive -Path "$PortableStagingDir\*" -DestinationPath $FinalPortableZipPath -CompressionLevel Optimal -Force
-
-    # Limpiar carpeta temporal de staging
-    Remove-Item -Path $PortableStagingDir -Recurse -Force
+    $FinalInstallerName = "DiskVault-Finder-$Version-x64-setup.exe"
+    $FinalInstallerPath = Join-Path $ReleaseDir $FinalInstallerName
+    Copy-Item -Path $NsisExe.FullName -Destination $FinalInstallerPath -Force
 
     # Calcular hash SHA-256
     Write-Step "Generando SHA256SUMS.txt..."
-    $hash = (Get-FileHash -Path $FinalPortableZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    Set-Content -Path (Join-Path $ReleaseDir "SHA256SUMS.txt") -Value "$hash  $FinalPortableZipName" -Encoding UTF8
+    $hash = (Get-FileHash -Path $FinalInstallerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Set-Content -Path (Join-Path $ReleaseDir "SHA256SUMS.txt") -Value "$hash  $FinalInstallerName" -Encoding UTF8
 
-    $sizeMB = [Math]::Round((Get-Item $FinalPortableZipPath).Length / 1MB, 2)
+    $sizeMB = [Math]::Round((Get-Item $FinalInstallerPath).Length / 1MB, 2)
     Write-Host ""
-    Write-Host "Paquete portable generado correctamente en: $ReleaseDir" -ForegroundColor Green
+    Write-Host "Instalador nativo generado correctamente en: $ReleaseDir" -ForegroundColor Green
     Write-Host "------------------------------------------------------------"
-    Write-Host ("  - {0} ({1} MB)" -f $FinalPortableZipName, $sizeMB)
+    Write-Host ("  - {0} ({1} MB)" -f $FinalInstallerName, $sizeMB)
     Write-Host "  - SHA256SUMS.txt"
     Write-Host "------------------------------------------------------------"
 }

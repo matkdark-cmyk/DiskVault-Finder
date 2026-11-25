@@ -387,11 +387,13 @@ export async function checkGithubUpdates(
   const recommendedAsset =
     assets.find(
       (a) =>
-        a.name.toLowerCase().endsWith('.zip') &&
-        a.name.toLowerCase().includes('portable'),
+        a.name.toLowerCase().endsWith('.exe') &&
+        (a.name.toLowerCase().includes('setup') ||
+          a.name.toLowerCase().includes('nsis')),
     ) ??
-    assets.find((a) => a.name.toLowerCase().endsWith('.zip')) ??
     assets.find((a) => a.name.toLowerCase().endsWith('.exe')) ??
+    assets.find((a) => a.name.toLowerCase().endsWith('.msi')) ??
+    assets.find((a) => a.name.toLowerCase().endsWith('.zip')) ??
     null;
 
   return {
