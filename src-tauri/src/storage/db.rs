@@ -729,11 +729,12 @@ mod tests {
 
         assert_eq!(matches, vec!["Video_Vacaciones_2025_4K.mp4"]);
 
-        // Comprobar trigger AFTER UPDATE
+        // Comprobar trigger AFTER UPDATE (actualizando tanto name como full_path)
         db.with_conn(|conn| {
             conn.execute(
                 "UPDATE indexed_entries
-                 SET name = 'Viaje_Patagonia_2025_4K.mp4'
+                 SET name = 'Viaje_Patagonia_2025_4K.mp4',
+                     full_path = '\\\\192.168.1.50\\Videos\\Familia\\Viaje_Patagonia_2025_4K.mp4'
                  WHERE name = 'Video_Vacaciones_2025_4K.mp4'",
                 [],
             )?;

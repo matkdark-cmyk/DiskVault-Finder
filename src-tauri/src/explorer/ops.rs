@@ -177,6 +177,16 @@ fn escape_like(value: &str) -> String {
     out
 }
 
+/// Construye un patrón SQLite `LIKE ... ESCAPE '\'` que coincide estrictamente con descendientes
+/// dentro de `normalized_path` (escapando la barra invertida final antes del comodín `%`).
+fn like_descendant_prefix(normalized_path: &str) -> String {
+    let mut lower = normalized_path.to_ascii_lowercase();
+    if !lower.ends_with('\\') {
+        lower.push('\\');
+    }
+    format!("{}%", escape_like(&lower))
+}
+
 fn recalculate_root_stats_tx(tx: &Transaction<'_>, root_id: i64) -> Result<(), String> {
     tx.execute(
         "UPDATE watched_roots
@@ -476,7 +486,7 @@ pub fn rename_entry_sync(
         }
 
         if is_dir {
-            let prefix_pattern = format!("{}\\%", escape_like(&old_path.to_ascii_lowercase()));
+            let prefix_pattern = like_descendant_prefix(&old_path);
             let descendants: Vec<(i64, String, String)> = {
                 let mut stmt = tx
                     .prepare(
@@ -680,7 +690,7 @@ pub fn move_entry_sync(
         }
 
         if is_dir {
-            let prefix_pattern = format!("{}\\%", escape_like(&source_path.to_ascii_lowercase()));
+            let prefix_pattern = like_descendant_prefix(&source_path);
             let descendants: Vec<(i64, String, String)> = {
                 let mut stmt = tx
                     .prepare(
@@ -799,7 +809,7 @@ pub fn delete_entry_sync(
             .transaction()
             .map_err(|e| format!("No se pudo iniciar la transacción SQLite: {e}"))?;
 
-        let prefix_pattern = format!("{}\\%", escape_like(&target_path.to_ascii_lowercase()));
+        let prefix_pattern = like_descendant_prefix(&target_path);
 
         let (count_to_remove, bytes_to_free): (i64, i64) = tx
             .query_row(
@@ -898,7 +908,7 @@ pub fn get_entry_properties_sync(
     let mut child_dirs: i64 = 0;
 
     if is_dir {
-        let prefix_pattern = format!("{}\\%", escape_like(&target_path.to_ascii_lowercase()));
+        let prefix_pattern = like_descendant_prefix(&target_path);
         if let Ok((files, dirs, total_sz)) = db.with_conn(|conn| {
             conn.query_row(
                 "SELECT
