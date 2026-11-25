@@ -80,8 +80,10 @@ interface SettingsModalProps {
   onClearCache: () => Promise<CacheStatsDto>;
   updateInfo: UpdateCheckResultDto | null;
   isCheckingUpdates: boolean;
+  isInstallingUpdate: boolean;
   updateError: string | null;
   onCheckUpdates: (repoOverride?: string) => Promise<UpdateCheckResultDto | null>;
+  onOpenUpdateModal: () => void;
   onOpenReleaseUrl: (url: string) => Promise<void>;
 }
 
@@ -152,8 +154,10 @@ export function SettingsModal({
   onClearCache,
   updateInfo,
   isCheckingUpdates,
+  isInstallingUpdate,
   updateError,
   onCheckUpdates,
+  onOpenUpdateModal,
   onOpenReleaseUrl,
 }: SettingsModalProps) {
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -1403,7 +1407,25 @@ export function SettingsModal({
                           isSafeGithubHttpsUrl(
                             updateInfo.recommended_asset.download_url,
                           ) &&
-                          (isTauri ? (
+                          (isTauri &&
+                          updateInfo.recommended_asset.name
+                            .toLowerCase()
+                            .endsWith('.exe') ? (
+                            <button
+                              type="button"
+                              disabled={isInstallingUpdate}
+                              onClick={onOpenUpdateModal}
+                              className="h-8 px-3.5 rounded-md bg-[#0067C0] hover:bg-[#005A9E] dark:bg-[#4CC2FF] dark:hover:bg-[#60CDFF] text-white dark:text-[#0A1929] text-[12px] font-semibold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              <span>
+                                Instalar y reiniciar ahora
+                                {updateInfo.recommended_asset.size_bytes > 0
+                                  ? ` (${formatBytes(updateInfo.recommended_asset.size_bytes)})`
+                                  : ''}
+                              </span>
+                            </button>
+                          ) : isTauri ? (
                             <button
                               type="button"
                               onClick={() =>

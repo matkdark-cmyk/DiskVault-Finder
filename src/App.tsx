@@ -32,6 +32,7 @@ import { ToastContainer } from './components/layout/ToastContainer';
 import { FirstRunSetupModal } from './components/onboarding/FirstRunSetupModal';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { SmbCredentialsModal } from './components/settings/SmbCredentialsModal';
+import { UpdateInstallModal } from './components/settings/UpdateInstallModal';
 import { ActiveTransfersBar } from './components/transfer/ActiveTransfersBar';
 import { CopyToPcModal } from './components/transfer/CopyToPcModal';
 import { useTauriEvents } from './hooks/useTauriEvents';
@@ -88,6 +89,9 @@ export default function App() {
     isAddRootModalOpen,
     isSettingsModalOpen,
     settingsActiveTab,
+    isUpdateModalOpen,
+    isInstallingUpdate,
+    updateProgress,
     updateInfo,
     isCheckingUpdates,
     updateError,
@@ -141,6 +145,11 @@ export default function App() {
     vacuumDatabase,
     clearCacheEntries,
     checkForUpdates,
+    openUpdateModal,
+    closeUpdateModal,
+    setUpdateProgress,
+    startInstallUpdate,
+    abortUpdateDownload,
     openReleaseLink,
     addToast,
     dismissToast,
@@ -169,6 +178,7 @@ export default function App() {
     searchInputRef,
     onIndexProgress: setIndexProgress,
     onCopyProgress: setCopyProgress,
+    onUpdateProgress: setUpdateProgress,
     onRootUpdated: handleRootUpdated,
     onTrayRefreshRequested: handleTrayRefreshRequested,
   });
@@ -268,6 +278,7 @@ export default function App() {
   const anyModalOpen =
     isAddRootModalOpen ||
     isSettingsModalOpen ||
+    isUpdateModalOpen ||
     smbModalPath !== null ||
     isNewFolderOpen ||
     renameTarget !== null ||
@@ -843,9 +854,26 @@ export default function App() {
         onClearCache={clearCacheEntries}
         updateInfo={updateInfo}
         isCheckingUpdates={isCheckingUpdates}
+        isInstallingUpdate={isInstallingUpdate}
         updateError={updateError}
         onCheckUpdates={(repoOverride) => checkForUpdates({ repoOverride })}
+        onOpenUpdateModal={openUpdateModal}
         onOpenReleaseUrl={openReleaseLink}
+      />
+
+      {/* Automatic update prompt & live installation progress modal */}
+      <UpdateInstallModal
+        isOpen={isUpdateModalOpen}
+        isTauri={isTauri}
+        updateInfo={updateInfo}
+        isInstalling={isInstallingUpdate}
+        progress={updateProgress}
+        error={updateError}
+        hasRunningTransfer={hasRunningTransfer}
+        onClose={closeUpdateModal}
+        onInstallNow={() => void startInstallUpdate()}
+        onCancelDownload={() => void abortUpdateDownload()}
+        onOpenReleaseUrl={(url) => void openReleaseLink(url)}
       />
 
       {/* SMB Credentials modal (Windows Credential Manager) */}

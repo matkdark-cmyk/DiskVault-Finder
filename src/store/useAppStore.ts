@@ -14,10 +14,12 @@ import type {
   SettingsTab,
   SortDirection,
   SortField,
+  SessionSnapshotDto,
   ThemeMode,
   ToastKind,
   ToastMessage,
   UpdateCheckResultDto,
+  UpdateProgressEvent,
   ViewMode,
   WatchedRoot,
   WorkspaceMode,
@@ -28,10 +30,13 @@ import {
   addWatchedRoot,
   cancelActiveCopy,
   cancelIndexing,
+  cancelUpdateDownload,
   checkGithubUpdates,
   clearAllCache,
+  consumePendingSessionRestore,
   createFolderOnNas,
   deleteEntryOnNas,
+  downloadAndInstallUpdate,
   extractErrorMessage,
   getAppBootstrap,
   getIndexProgress,
@@ -102,6 +107,9 @@ interface AppStoreState {
   isAddRootModalOpen: boolean;
   isSettingsModalOpen: boolean;
   settingsActiveTab: SettingsTab;
+  isUpdateModalOpen: boolean;
+  isInstallingUpdate: boolean;
+  updateProgress: UpdateProgressEvent | null;
   updateInfo: UpdateCheckResultDto | null;
   isCheckingUpdates: boolean;
   updateError: string | null;
@@ -173,6 +181,11 @@ interface AppStoreState {
     repoOverride?: string;
     silent?: boolean;
   }) => Promise<UpdateCheckResultDto | null>;
+  openUpdateModal: () => void;
+  closeUpdateModal: () => void;
+  setUpdateProgress: (progress: UpdateProgressEvent | null) => void;
+  startInstallUpdate: () => Promise<void>;
+  abortUpdateDownload: () => Promise<void>;
   openReleaseLink: (url: string) => Promise<void>;
   addToast: (kind: ToastKind, title: string, detail?: string) => void;
   dismissToast: (id: string) => void;
@@ -263,6 +276,9 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   isAddRootModalOpen: false,
   isSettingsModalOpen: false,
   settingsActiveTab: 'general',
+  isUpdateModalOpen: false,
+  isInstallingUpdate: false,
+  updateProgress: null,
   updateInfo: null,
   isCheckingUpdates: false,
   updateError: null,
@@ -271,10 +287,62 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
   bootstrap: async () => {
     set({ isLoading: true });
     try {
-      const [data, progress] = await Promise.all([
+      const [data, progress, pendingSession] = await Promise.all([
         getAppBootstrap(),
         getIndexProgress(),
+        consumePendingSessionRestore().catch(() => null),
       ]);
+
+      const validViewMode: ViewMode =
+        pendingSession &&
+        (pendingSession.view_mode === 'list' ||
+          pendingSession.view_mode === 'grid')
+          ? pendingSession.view_mode
+          : data.settings.default_view_mode;
+
+      const validSearchFilter: SearchFilter =
+        pendingSession &&
+        (pendingSession.search_filter === 'all' ||
+          pendingSession.search_filter === 'file' ||
+          pendingSession.search_filter === 'video' ||
+          pendingSession.search_filter === 'folder')
+          ? pendingSession.search_filter
+          : data.settings.default_search_filter;
+
+      const validSortField: SortField =
+        pendingSession &&
+        (pendingSession.sort_field === 'name' ||
+          pendingSession.sort_field === 'modified' ||
+          pendingSession.sort_field === 'type' ||
+          pendingSession.sort_field === 'size')
+          ? pendingSession.sort_field
+          : 'name';
+
+      const validSortDirection: SortDirection =
+        pendingSession &&
+        (pendingSession.sort_direction === 'asc' ||
+          pendingSession.sort_direction === 'desc')
+          ? pendingSession.sort_direction
+          : 'asc';
+
+      const restoredRootId =
+        pendingSession?.selected_root_id !== null &&
+        pendingSession?.selected_root_id !== undefined &&
+        data.roots.some((r) => r.id === pendingSession.selected_root_id)
+          ? pendingSession.selected_root_id
+          : null;
+
+      const restoredHistory = Array.isArray(pendingSession?.history)
+        ? pendingSession.history
+        : [];
+      const restoredHistoryIndex =
+        pendingSession &&
+        restoredHistory.length > 0 &&
+        pendingSession.history_index >= 0 &&
+        pendingSession.history_index < restoredHistory.length
+          ? pendingSession.history_index
+          : restoredHistory.length - 1;
+
       set({
         isLoading: false,
         isTauri: isTauriRuntime(),
@@ -282,15 +350,47 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         dataDir: data.data_dir,
         roots: data.roots,
         settings: data.settings,
-        viewMode: data.settings.default_view_mode,
-        searchFilter: data.settings.default_search_filter,
+        viewMode: validViewMode,
+        searchFilter: validSearchFilter,
+        sortField: validSortField,
+        sortDirection: validSortDirection,
+        selectedRootId: restoredRootId,
+        searchQuery: pendingSession?.search_query ?? '',
+        history: restoredHistory,
+        historyIndex: restoredHistoryIndex,
+        selectedItemPath: pendingSession?.selected_item_path ?? null,
+        workspaceMode:
+          pendingSession?.workspace_mode === 'browse' &&
+          pendingSession.current_path
+            ? 'browse'
+            : 'search',
         needsOnboarding: data.needs_onboarding,
         isAddRootModalOpen: data.needs_onboarding,
         indexProgress: progress,
       });
-      if (data.roots.length > 0) {
+
+      if (pendingSession) {
+        if (
+          pendingSession.workspace_mode === 'browse' &&
+          pendingSession.current_path &&
+          data.roots.length > 0
+        ) {
+          void get().navigateToPath(pendingSession.current_path, {
+            pushHistory: false,
+            highlightPath: pendingSession.selected_item_path,
+          });
+        } else if (data.roots.length > 0) {
+          void get().runSearch();
+        }
+        get().addToast(
+          'success',
+          `Actualizado a DiskVault Finder v${pendingSession.updated_to_version}`,
+          'Restauramos exactamente donde estabas trabajando sin perder ningún cambio.',
+        );
+      } else if (data.roots.length > 0) {
         void get().runSearch();
       }
+
       if (
         data.settings.check_updates_on_startup &&
         data.settings.github_repo.trim().length > 0
@@ -1073,11 +1173,10 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
       });
 
       if (info.has_update) {
-        get().addToast(
-          'info',
-          `Nueva versión disponible: v${info.latest_version}`,
-          'Abre Ajustes → Actualizaciones y Acerca de para descargarla desde GitHub.',
-        );
+        set({
+          isUpdateModalOpen: true,
+          updateProgress: null,
+        });
       } else if (!silent) {
         get().addToast(
           'success',
@@ -1097,6 +1196,165 @@ export const useAppStore = create<AppStoreState>((set, get) => ({
         get().addToast('error', 'No se pudieron buscar actualizaciones', msg);
       }
       return null;
+    }
+  },
+
+  openUpdateModal: () => {
+    set({
+      isUpdateModalOpen: true,
+      isSettingsModalOpen: false,
+      updateError: null,
+    });
+  },
+
+  closeUpdateModal: () => {
+    const { isInstallingUpdate, updateProgress } = get();
+    if (
+      isInstallingUpdate &&
+      updateProgress?.phase !== 'error' &&
+      updateProgress?.phase !== 'cancelled'
+    ) {
+      return;
+    }
+    set({
+      isUpdateModalOpen: false,
+      updateProgress: null,
+      updateError: null,
+    });
+  },
+
+  setUpdateProgress: (progress) => {
+    set((state) => ({
+      updateProgress: progress,
+      isInstallingUpdate:
+        progress !== null &&
+        progress.phase !== 'error' &&
+        progress.phase !== 'cancelled'
+          ? true
+          : state.isInstallingUpdate,
+    }));
+  },
+
+  startInstallUpdate: async () => {
+    const state = get();
+    const { updateInfo, activeTransfer, indexProgress, isInstallingUpdate } =
+      state;
+
+    if (isInstallingUpdate) {
+      return;
+    }
+
+    if (!updateInfo || !updateInfo.has_update || !updateInfo.recommended_asset) {
+      set({
+        updateError:
+          'No se encontró un instalador compatible de Windows (.exe) en este lanzamiento de GitHub.',
+      });
+      return;
+    }
+
+    if (!updateInfo.recommended_asset.name.toLowerCase().endsWith('.exe')) {
+      set({
+        updateError:
+          'La instalación automática requiere un instalador de Windows (.exe) adjunto en el Release.',
+      });
+      return;
+    }
+
+    if (
+      activeTransfer &&
+      (activeTransfer.status === 'running' || activeTransfer.status === 'paused')
+    ) {
+      const msg =
+        'Hay una copia desde el NAS al PC en curso. Espera a que termine o cancélala antes de reiniciar para actualizar.';
+      set({ updateError: msg });
+      get().addToast('warning', 'Transferencia activa', msg);
+      return;
+    }
+
+    if (indexProgress.is_running) {
+      try {
+        await cancelIndexing();
+      } catch {
+        // Continuar: SQLite mantiene el caché anterior intacto
+      }
+    }
+
+    const sessionSnapshot: SessionSnapshotDto = {
+      workspace_mode: state.workspaceMode,
+      selected_root_id: state.selectedRootId,
+      current_path: state.currentListing?.current_path ?? null,
+      history: state.history,
+      history_index: state.historyIndex,
+      selected_item_path: state.selectedItemPath,
+      search_query: state.searchQuery,
+      search_filter: state.searchFilter,
+      view_mode: state.viewMode,
+      sort_field: state.sortField,
+      sort_direction: state.sortDirection,
+      updated_from_version: updateInfo.current_version,
+      updated_to_version: updateInfo.latest_version,
+    };
+
+    set({
+      isInstallingUpdate: true,
+      isUpdateModalOpen: true,
+      isSettingsModalOpen: false,
+      updateError: null,
+      updateProgress: {
+        phase: 'downloading',
+        percent: 0,
+        bytes_downloaded: 0,
+        bytes_total: updateInfo.recommended_asset.size_bytes,
+        speed_bps: 0,
+        message: `Conectando con GitHub para descargar v${updateInfo.latest_version}...`,
+      },
+    });
+
+    try {
+      await downloadAndInstallUpdate({
+        download_url: updateInfo.recommended_asset.download_url,
+        asset_name: updateInfo.recommended_asset.name,
+        latest_version: updateInfo.latest_version,
+        sha256_url: updateInfo.sha256_url,
+        session_snapshot: sessionSnapshot,
+      });
+    } catch (err) {
+      const msg = extractErrorMessage(err);
+      const wasCancelled = msg.toLowerCase().includes('cancelad');
+      if (wasCancelled) {
+        set({
+          isInstallingUpdate: false,
+          updateProgress: null,
+          updateError: null,
+        });
+        get().addToast(
+          'info',
+          'Actualización cancelada',
+          'Puedes instalar la nueva versión más tarde desde Ajustes → Actualizaciones.',
+        );
+      } else {
+        set({
+          isInstallingUpdate: false,
+          updateError: msg,
+          updateProgress: {
+            phase: 'error',
+            percent: 0,
+            bytes_downloaded: 0,
+            bytes_total: 0,
+            speed_bps: 0,
+            message: msg,
+          },
+        });
+        get().addToast('error', 'No se pudo completar la actualización', msg);
+      }
+    }
+  },
+
+  abortUpdateDownload: async () => {
+    try {
+      await cancelUpdateDownload();
+    } catch {
+      // Silencioso si ya finalizó
     }
   },
 

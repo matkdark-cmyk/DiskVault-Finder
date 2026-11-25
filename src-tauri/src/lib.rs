@@ -14,6 +14,7 @@ use std::sync::{
 use storage::{
     db::Database,
     paths::{resolve_app_paths, AppPaths},
+    updater::UpdaterState,
 };
 use tauri::{Manager, Theme};
 use tokio::sync::Notify;
@@ -48,6 +49,7 @@ pub fn run() {
     );
     let indexer_state = Arc::new(IndexerState::new());
     let copier_state = Arc::new(CopierState::new());
+    let updater_state = Arc::new(UpdaterState::new());
     let scheduler_notify = Arc::new(Notify::new());
 
     let initial_theme_mode = db
@@ -71,6 +73,7 @@ pub fn run() {
         .manage(state)
         .manage(indexer_state)
         .manage(copier_state)
+        .manage(updater_state)
         .setup(move |app| {
             if let Some(window) = app.get_webview_window("main") {
                 if let Ok(target_theme) = parse_window_theme(&initial_theme_mode) {
@@ -125,6 +128,10 @@ pub fn run() {
             storage::settings::clear_all_cache,
             storage::smb::connect_smb_share,
             storage::updater::check_github_updates,
+            storage::updater::download_and_install_update,
+            storage::updater::cancel_update_download,
+            storage::updater::save_session_for_update,
+            storage::updater::consume_pending_session_restore,
             storage::updater::open_github_release_url,
             storage::clean_import::detect_diskvault_clean_destinations,
             storage::clean_import::inspect_diskvault_clean_file,

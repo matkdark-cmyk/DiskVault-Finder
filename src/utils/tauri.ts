@@ -16,10 +16,12 @@ import type {
   IndexProgress,
   IndexRefreshReport,
   IndexedEntryDto,
+  InstallUpdateRequest,
   PathValidationInfo,
   PcQuickFoldersDto,
   SearchRequest,
   SearchResponse,
+  SessionSnapshotDto,
   ThemeMode,
   UpdateCheckResultDto,
   WatchedRoot,
@@ -245,7 +247,8 @@ export function isSafeGithubHttpsUrl(url: string): boolean {
   return (
     trimmed.startsWith('https://github.com/') ||
     trimmed.startsWith('https://objects.githubusercontent.com/') ||
-    trimmed.startsWith('https://release-assets.githubusercontent.com/')
+    trimmed.startsWith('https://release-assets.githubusercontent.com/') ||
+    trimmed.startsWith('https://github-releases.githubusercontent.com/')
   );
 }
 
@@ -396,6 +399,10 @@ export async function checkGithubUpdates(
     assets.find((a) => a.name.toLowerCase().endsWith('.zip')) ??
     null;
 
+  const sha256Url =
+    assets.find((a) => a.name.toLowerCase() === 'sha256sums.txt')
+      ?.download_url ?? null;
+
   return {
     current_version: APP_VERSION_FALLBACK,
     latest_version: latestVersion,
@@ -406,9 +413,40 @@ export async function checkGithubUpdates(
     release_url: releaseUrl,
     published_at: data.published_at ?? null,
     recommended_asset: recommendedAsset,
+    sha256_url: sha256Url,
     assets,
     is_portable: false,
   };
+}
+
+export async function downloadAndInstallUpdate(
+  request: InstallUpdateRequest,
+): Promise<void> {
+  if (!isSafeGithubHttpsUrl(request.download_url)) {
+    throw new Error(
+      'Por seguridad solo se pueden descargar instaladores desde servidores oficiales HTTPS de GitHub.',
+    );
+  }
+  if (!isTauriRuntime()) {
+    throw new Error(
+      'La instalación automática con reinicio solo está disponible en DiskVault Finder para Windows.',
+    );
+  }
+  return invoke<void>('download_and_install_update', { request });
+}
+
+export async function cancelUpdateDownload(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  return invoke<void>('cancel_update_download');
+}
+
+export async function consumePendingSessionRestore(): Promise<SessionSnapshotDto | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return invoke<SessionSnapshotDto | null>('consume_pending_session_restore');
 }
 
 export async function openGithubReleaseUrl(url: string): Promise<void> {

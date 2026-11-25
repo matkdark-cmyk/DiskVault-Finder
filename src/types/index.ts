@@ -71,8 +71,50 @@ export interface UpdateCheckResultDto {
   release_url: string;
   published_at: string | null;
   recommended_asset: ReleaseAssetDto | null;
+  sha256_url: string | null;
   assets: ReleaseAssetDto[];
   is_portable: boolean;
+}
+
+export type UpdatePhase =
+  | 'downloading'
+  | 'verifying'
+  | 'installing'
+  | 'restarting'
+  | 'cancelled'
+  | 'error';
+
+export interface UpdateProgressEvent {
+  phase: UpdatePhase;
+  percent: number;
+  bytes_downloaded: number;
+  bytes_total: number;
+  speed_bps: number;
+  message: string;
+}
+
+export interface SessionSnapshotDto {
+  workspace_mode: WorkspaceMode;
+  selected_root_id: number | null;
+  current_path: string | null;
+  history: string[];
+  history_index: number;
+  selected_item_path: string | null;
+  search_query: string;
+  search_filter: SearchFilter;
+  view_mode: ViewMode;
+  sort_field: SortField;
+  sort_direction: SortDirection;
+  updated_from_version: string;
+  updated_to_version: string;
+}
+
+export interface InstallUpdateRequest {
+  download_url: string;
+  asset_name: string;
+  latest_version: string;
+  sha256_url: string | null;
+  session_snapshot: SessionSnapshotDto;
 }
 
 export interface CacheStatsDto {

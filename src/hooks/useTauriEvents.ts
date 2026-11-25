@@ -1,12 +1,17 @@
 import { useEffect, type RefObject } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { CopyProgressEvent, IndexProgress } from '../types';
+import type {
+  CopyProgressEvent,
+  IndexProgress,
+  UpdateProgressEvent,
+} from '../types';
 import { isTauriRuntime } from '../utils/tauri';
 
 interface UseTauriEventsOptions {
   searchInputRef: RefObject<HTMLInputElement | null>;
   onIndexProgress: (progress: IndexProgress) => void;
   onCopyProgress: (progress: CopyProgressEvent) => void;
+  onUpdateProgress: (progress: UpdateProgressEvent) => void;
   onRootUpdated: () => void;
   onTrayRefreshRequested: () => void;
 }
@@ -15,6 +20,7 @@ export function useTauriEvents({
   searchInputRef,
   onIndexProgress,
   onCopyProgress,
+  onUpdateProgress,
   onRootUpdated,
   onTrayRefreshRequested,
 }: UseTauriEventsOptions): void {
@@ -73,6 +79,9 @@ export function useTauriEvents({
       register<CopyProgressEvent>('copy-progress', (payload) => {
         onCopyProgress(payload);
       });
+      register<UpdateProgressEvent>('update:progress', (payload) => {
+        onUpdateProgress(payload);
+      });
       register<number>('index-root-updated', () => {
         onRootUpdated();
       });
@@ -89,6 +98,7 @@ export function useTauriEvents({
     searchInputRef,
     onIndexProgress,
     onCopyProgress,
+    onUpdateProgress,
     onRootUpdated,
     onTrayRefreshRequested,
   ]);
