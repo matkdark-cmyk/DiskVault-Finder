@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    Genera los artefactos oficiales de distribución para Windows x64 de DiskVault Finder:
-      1. Instalador Windows NSIS (.exe)
-      2. Paquete Portable (.zip) con portable.flag (cero entradas en el Registro de Windows)
-      3. Archivo de verificación SHA256SUMS.txt
+    Genera el paquete oficial Portable (.zip) para Windows x64 de DiskVault Finder:
+      1. Compila el ejecutable Windows x64 sin crear instalador (--no-bundle)
+      2. Empaqueta DiskVault-Finder-<version>-x64-portable.zip con portable.flag y LEEME-PORTABLE.txt
+      3. Genera SHA256SUMS.txt
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\scripts\build-releases.ps1
@@ -48,7 +48,7 @@ try {
         $Version = "1.0.0"
     }
 
-    Write-Host "Producto : $($TauriConf.productName)"
+    Write-Host "Producto : $($TauriConf.productName) (Edición Portable)"
     Write-Host "Versión  : $Version"
     Write-Host "Destino  : $ReleaseDir"
 
@@ -73,8 +73,8 @@ try {
         }
     }
 
-    Write-Step "Compilando aplicación y generando instalador NSIS (.exe)..."
-    npx --yes @tauri-apps/cli build --bundles nsis
+    Write-Step "Compilando ejecutable portable de Windows x64 (sin instalador)..."
+    npx --yes @tauri-apps/cli build --no-bundle
     if ($LASTEXITCODE -ne 0) { throw "Falló tauri build." }
 
     # Preparar carpeta release/
@@ -89,18 +89,7 @@ try {
         throw "No se encontró el ejecutable compilado en '$MainExePath'."
     }
 
-    # 1. Copiar instalador NSIS (.exe)
-    $NsisDir = Join-Path $TargetReleaseDir "bundle\nsis"
-    $NsisExe = Get-ChildItem -Path $NsisDir -Filter "*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if (-not $NsisExe) {
-        throw "No se encontró el instalador NSIS (.exe) en '$NsisDir'."
-    }
-
-    $FinalInstallerName = "DiskVault-Finder-$Version-x64-setup.exe"
-    $FinalInstallerPath = Join-Path $ReleaseDir $FinalInstallerName
-    Copy-Item -Path $NsisExe.FullName -Destination $FinalInstallerPath -Force
-
-    # 2. Ensamblar paquete Portable (.zip) con portable.flag
+    # Ensamblar paquete Portable (.zip) con portable.flag
     Write-Step "Ensamblando versión Portable (.zip)..."
     $PortableFolderName = "DiskVault-Finder-$Version-x64-portable"
     $PortableStagingDir = Join-Path $ReleaseDir $PortableFolderName
@@ -130,27 +119,19 @@ Requisito del sistema:
     $FinalPortableZipPath = Join-Path $ReleaseDir $FinalPortableZipName
     Compress-Archive -Path "$PortableStagingDir\*" -DestinationPath $FinalPortableZipPath -CompressionLevel Optimal -Force
 
-    # Limpiar carpeta temporal de staging dejando los dos artefactos finales + checksums
+    # Limpiar carpeta temporal de staging
     Remove-Item -Path $PortableStagingDir -Recurse -Force
 
-    # 3. Calcular hashes SHA-256
+    # Calcular hash SHA-256
     Write-Step "Generando SHA256SUMS.txt..."
-    $Artifacts = @($FinalInstallerPath, $FinalPortableZipPath)
-    $HashLines = @()
-    foreach ($file in $Artifacts) {
-        $hash = (Get-FileHash -Path $file -Algorithm SHA256).Hash.ToLowerInvariant()
-        $fileName = Split-Path $file -Leaf
-        $HashLines += "$hash  $fileName"
-    }
-    Set-Content -Path (Join-Path $ReleaseDir "SHA256SUMS.txt") -Value $HashLines -Encoding UTF8
+    $hash = (Get-FileHash -Path $FinalPortableZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Set-Content -Path (Join-Path $ReleaseDir "SHA256SUMS.txt") -Value "$hash  $FinalPortableZipName" -Encoding UTF8
 
+    $sizeMB = [Math]::Round((Get-Item $FinalPortableZipPath).Length / 1MB, 2)
     Write-Host ""
-    Write-Host "Empaquetado completado correctamente en: $ReleaseDir" -ForegroundColor Green
+    Write-Host "Paquete portable generado correctamente en: $ReleaseDir" -ForegroundColor Green
     Write-Host "------------------------------------------------------------"
-    foreach ($file in $Artifacts) {
-        $sizeMB = [Math]::Round((Get-Item $file).Length / 1MB, 2)
-        Write-Host ("  - {0} ({1} MB)" -f (Split-Path $file -Leaf), $sizeMB)
-    }
+    Write-Host ("  - {0} ({1} MB)" -f $FinalPortableZipName, $sizeMB)
     Write-Host "  - SHA256SUMS.txt"
     Write-Host "------------------------------------------------------------"
 }

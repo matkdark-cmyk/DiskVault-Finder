@@ -187,47 +187,32 @@ pub fn compare_semver(current: &str, latest: &str) -> Ordering {
     }
 }
 
-/// Selecciona el paquete recomendado de la release según si el usuario ejecuta Modo Portable o Instalado.
+/// Selecciona el paquete portable (.zip) recomendado del lanzamiento de GitHub.
 pub fn select_recommended_asset(
     assets: &[ReleaseAssetDto],
-    is_portable: bool,
+    _is_portable: bool,
 ) -> Option<ReleaseAssetDto> {
     if assets.is_empty() {
         return None;
     }
 
-    if is_portable {
-        assets
-            .iter()
-            .find(|a| {
-                let lower = a.name.to_ascii_lowercase();
-                lower.ends_with(".zip") && lower.contains("portable")
-            })
-            .or_else(|| {
-                assets
-                    .iter()
-                    .find(|a| a.name.to_ascii_lowercase().ends_with(".zip"))
-            })
-            .cloned()
-    } else {
-        assets
-            .iter()
-            .find(|a| {
-                let lower = a.name.to_ascii_lowercase();
-                lower.ends_with(".exe") && (lower.contains("setup") || lower.contains("nsis"))
-            })
-            .or_else(|| {
-                assets
-                    .iter()
-                    .find(|a| a.name.to_ascii_lowercase().ends_with(".exe"))
-            })
-            .or_else(|| {
-                assets
-                    .iter()
-                    .find(|a| a.name.to_ascii_lowercase().ends_with(".msi"))
-            })
-            .cloned()
-    }
+    assets
+        .iter()
+        .find(|a| {
+            let lower = a.name.to_ascii_lowercase();
+            lower.ends_with(".zip") && lower.contains("portable")
+        })
+        .or_else(|| {
+            assets
+                .iter()
+                .find(|a| a.name.to_ascii_lowercase().ends_with(".zip"))
+        })
+        .or_else(|| {
+            assets
+                .iter()
+                .find(|a| a.name.to_ascii_lowercase().ends_with(".exe"))
+        })
+        .cloned()
 }
 
 #[cfg(windows)]
@@ -443,14 +428,8 @@ mod tests {
     }
 
     #[test]
-    fn selects_portable_zip_or_installer_exe_by_mode() {
+    fn selects_portable_zip_asset_from_release() {
         let assets = vec![
-            ReleaseAssetDto {
-                name: "DiskVault-Finder-1.1.0-x64-setup.exe".to_string(),
-                download_url: "https://github.com/a/b/releases/download/v1.1.0/setup.exe"
-                    .to_string(),
-                size_bytes: 12_000_000,
-            },
             ReleaseAssetDto {
                 name: "DiskVault-Finder-1.1.0-x64-portable.zip".to_string(),
                 download_url: "https://github.com/a/b/releases/download/v1.1.0/portable.zip"
@@ -467,9 +446,6 @@ mod tests {
 
         let portable = select_recommended_asset(&assets, true).expect("debe elegir zip portable");
         assert!(portable.name.ends_with("-portable.zip"));
-
-        let installed = select_recommended_asset(&assets, false).expect("debe elegir setup exe");
-        assert!(installed.name.ends_with("-setup.exe"));
     }
 
     #[test]
