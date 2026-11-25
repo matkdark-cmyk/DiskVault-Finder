@@ -1,0 +1,6 @@
+{
+  "name": "DiskVault Finder",
+  "description": "Buscador y explorador nativo de escritorio para Windows con caché local SQLite FTS5 para encontrar, explorar y copiar archivos en NAS y discos de respaldo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
